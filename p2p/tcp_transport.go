@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -23,8 +24,20 @@ func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	}
 }
 
+// Close implements the Peer interface
 func (p *TCPPeer) Close() error {
 	return p.conn.Close()
+}
+
+// RemoteAddr implements the Peer interface and will return the
+// remote address of its underlying connection
+func (p *TCPPeer) RemoteAddr() net.Addr {
+	return p.conn.RemoteAddr()
+}
+
+func (p *TCPPeer) Send(b []byte) error {
+	_, err := p.conn.Write(b)
+	return err
 }
 
 type TCPTransportOpts struct {
@@ -55,6 +68,21 @@ func (t *TCPTransport) Consume() <-chan RPC {
 	return t.rpChan
 }
 
+// Close implements the Transport interface, which
+func (t *TCPTransport) Close() error {
+	return t.listener.Close()
+}
+
+func (t *TCPTransport) Dial(addr string) error {
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return err
+	}
+
+	go t.handleConn(conn, true)
+
+	return nil
+}
 func (t *TCPTransport) ListenAndAccept() error {
 	var err error
 
@@ -63,6 +91,7 @@ func (t *TCPTransport) ListenAndAccept() error {
 		return err
 	}
 
+	fmt.Printf("TCP server listening on %s\n", t.ListenAddr)
 	go t.startAndAcceptLoop()
 
 	return nil
@@ -71,23 +100,26 @@ func (t *TCPTransport) ListenAndAccept() error {
 func (t *TCPTransport) startAndAcceptLoop() {
 	for {
 		conn, err := t.listener.Accept()
+		if errors.Is(err, net.ErrClosed) {
+			return
+		}
 		if err != nil {
 			fmt.Printf("TCP accept error: %s\n", err)
 		}
-		go t.handleConn(conn)
+		go t.handleConn(conn, false)
 	}
 }
 
 type Temp struct{}
 
-func (t *TCPTransport) handleConn(conn net.Conn) {
+func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 	var err error
 
 	defer func() {
 		fmt.Print("Dropping peer connection")
 	}()
 
-	peer := NewTCPPeer(conn, true)
+	peer := NewTCPPeer(conn, outbound)
 
 	if t.OnPeer != nil {
 		if err = t.OnPeer(peer); err != nil {

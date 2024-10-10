@@ -21,35 +21,42 @@ func TestCASPathTransformFunc(t *testing.T) {
 	//fmt.Println(pathname)
 }
 func TestStore(t *testing.T) {
-	opts := StoreOpts{
-		PathTransformPathFunc: CASPathTransformFunc,
-	}
-	s := NewStore(opts)
+	s := newStore()
 
-	key := "mombestpicture"
-	data := []byte("some jpg bytes")
-	if err := s.writeStream(key, bytes.NewReader(data)); err != nil {
-		t.Error(err)
-	}
+	defer tearDown(t, s)
+	for i := 0; i < 50; i++ {
 
-	r, err := s.Read(key)
-	if err != nil {
-		t.Error(err)
-	}
+		key := fmt.Sprintf("foo_%d", i)
+		data := []byte("some jpg bytes")
+		if err := s.writeStream(key, bytes.NewReader(data)); err != nil {
+			t.Error(err)
+		}
 
-	b, _ := io.ReadAll(r)
+		r, err := s.Read(key)
+		if err != nil {
+			t.Error(err)
+		}
 
-	fmt.Println(string(b))
-	if !bytes.Equal(data, b) {
-		t.Error("expected data to be the same")
+		b, _ := io.ReadAll(r)
+
+		fmt.Println(string(b))
+		if !bytes.Equal(data, b) {
+			t.Error("expected data to be the same")
+		}
+
+		if err := s.Delete(key); err != nil {
+			t.Error(err)
+		}
+
+		if ok := s.Has(key); ok {
+			t.Errorf("expected to NOT have key %s", key)
+		}
 	}
 }
 
 func TestStore_Delete(t *testing.T) {
-	opts := StoreOpts{
-		PathTransformPathFunc: CASPathTransformFunc,
-	}
-	s := NewStore(opts)
+	s := newStore()
+	defer tearDown(t, s)
 
 	key := "mombestpicture"
 	data := []byte("some jpg bytes")
@@ -58,6 +65,20 @@ func TestStore_Delete(t *testing.T) {
 	}
 
 	if err := s.Delete(key); err != nil {
+		t.Error(err)
+	}
+}
+
+func newStore() *Store {
+	opts := StoreOpts{
+		PathTransformPathFunc: CASPathTransformFunc,
+	}
+	return NewStore(opts)
+
+}
+
+func tearDown(t *testing.T, s *Store) {
+	if err := s.Clear(); err != nil {
 		t.Error(err)
 	}
 }

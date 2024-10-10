@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -85,11 +86,19 @@ func NewStore(opts StoreOpts) *Store {
 	}
 }
 
-//	func (s *Store) Has(key string) bool{
-//		pathKey := s.PathTransformPathFunc(key)
-//
-//		os.
-//	}
+func (s *Store) Clear() error {
+	return os.RemoveAll(s.Root)
+}
+
+func (s *Store) Has(key string) bool {
+	pathKey := s.PathTransformPathFunc(key)
+
+	folder := s.fullPathWithRoot(pathKey)
+
+	_, err := os.Stat(folder)
+
+	return !errors.Is(err, os.ErrNotExist)
+}
 
 func (s *Store) folderNameWithRoot(pathKey PathKey) string {
 	return fmt.Sprintf("%s/%s", s.Root, pathKey.PathName)
@@ -112,6 +121,10 @@ func (s *Store) Delete(key string) error {
 	return os.RemoveAll(s.firstPathNameWithRoot(pathKey))
 }
 
+func (s *Store) Write(key string, r io.Reader) error {
+	return s.writeStream(key, r)
+}
+
 func (s *Store) Read(key string) (io.Reader, error) {
 	f, err := s.readStream(key)
 	if err != nil {
@@ -123,6 +136,7 @@ func (s *Store) Read(key string) (io.Reader, error) {
 	_, err = io.Copy(buf, f)
 	return buf, err
 }
+
 func (s *Store) readStream(key string) (io.ReadCloser, error) {
 	pathKey := s.PathTransformPathFunc(key)
 
