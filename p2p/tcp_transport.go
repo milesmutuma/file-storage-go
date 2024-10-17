@@ -9,35 +9,35 @@ import (
 
 // TCPPeer represents the remote node over a TCP established connection
 type TCPPeer struct {
-	// conn is the underlying connection of the Peer
-	conn net.Conn
-
+	// The underlying connection of the peer. Which in this case is a TCP connection
+	net.Conn
 	// if we dial and retrieve conn =>> outbound == true
 	// if we accept and retrieve conn ==> outbound === false
 	outbound bool
+
+	wg *sync.WaitGroup
 }
 
+// Send Implement the Peer interface for TCPPeer
+func (p *TCPPeer) Send(b []byte) error {
+	// Write the data to the underlying connection
+	_, err := p.Write(b)
+	if err != nil {
+		return fmt.Errorf("failed to send data : %w", err)
+	}
+
+	return nil
+}
+
+func (p *TCPPeer) CloseStream() {
+	p.wg.Done()
+}
 func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	return &TCPPeer{
-		conn:     conn,
+		Conn:     conn,
 		outbound: outbound,
+		wg:       &sync.WaitGroup{},
 	}
-}
-
-// Close implements the Peer interface
-func (p *TCPPeer) Close() error {
-	return p.conn.Close()
-}
-
-// RemoteAddr implements the Peer interface and will return the
-// remote address of its underlying connection
-func (p *TCPPeer) RemoteAddr() net.Addr {
-	return p.conn.RemoteAddr()
-}
-
-func (p *TCPPeer) Send(b []byte) error {
-	_, err := p.conn.Write(b)
-	return err
 }
 
 type TCPTransportOpts struct {
@@ -60,6 +60,12 @@ func NewTCPTransport(opts TCPTransportOpts) *TCPTransport {
 		TCPTransportOpts: opts,
 		rpChan:           make(chan RPC),
 	}
+}
+
+// Addr implements Transport interface the address
+// the transport is acc
+func (t *TCPTransport) Addr() string {
+	return t.listener.Addr().String()
 }
 
 // Consume implements the Transport interface, which will return read-nly channel
@@ -136,15 +142,23 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 	}
 
 	// Read Loop
-	msg := RPC{}
+
 	for {
+		msg := RPC{}
 		if err := t.Decoder.Decode(conn, &msg); err != nil {
 			fmt.Printf("Error decoding message: %s\n", err)
 			continue
 		}
 		msg.From = conn.RemoteAddr()
-		t.rpChan <- msg
 
+		if msg.Stream {
+			peer.wg.Add(1)
+			fmt.Printf("[%s] incoming stream, waiting...\n", conn.RemoteAddr())
+			peer.wg.Wait()
+			fmt.Printf("[%s] stream closed, resuming read loop\n", conn.RemoteAddr())
+			continue
+		}
+		t.rpChan <- msg
 		fmt.Printf("Received RPC : %+v\n", msg)
 	}
 }

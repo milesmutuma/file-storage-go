@@ -1,18 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"distributed_file_storage/p2p"
 	"log"
+	"time"
 )
-
-//func OnPeer(peer p2p.Peer) error {
-//	fmt.Println("Doing some logic with the peer outside of TCPTransport")
-//	err := peer.Close()
-//	if err != nil {
-//		return err
-//	}
-//	return nil
-//}
 
 func makeServer(listenAddr string, nodes ...string) *FileServer {
 	trOpts := p2p.TCPTransportOpts{
@@ -44,12 +37,22 @@ func main() {
 		}
 	}()
 
-	s2.Start()
+	time.Sleep(2 * time.Second)
 
+	go s2.Start()
+	time.Sleep(2 * time.Second)
+
+	data := bytes.NewReader([]byte("my big data file here"))
+	s2.Store("myprivatedata", data)
+
+	//_, err := s2.Get("myprivatedata")
+	//if err != nil {
+	//	return
+	//}
 	//go func() {
 	//	for {
 	//		msg := <-tr.Consume()
-	//		log.Printf("Received message from %s: %s\n", msg.From, string(msg.Payload))
+	//		log.Printf("Received message from %s: %s\n", msg.From, string(msg.DataMessage))
 	//	}
 	//}()
 	//
@@ -57,5 +60,5 @@ func main() {
 	//	log.Fatal(err)
 	//}
 	//
-	//select {}
+	select {}
 }
